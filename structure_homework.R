@@ -38,8 +38,14 @@ load("rs_data.RData")
 # Why did some of the artist-song fail to match up?
 
 #ANSWER
+# Full join on the two datasets by Artist and Song
+rs_joined_orig <- full_join(rs_new, rs_old, by = c("Artist", "Song"))
 
+# Save the result to an RData file
+save(rs_joined_orig, file = "rs_joined_orig.RData")
 
+nrow(rs_joined_orig)
+# There is missing data and there are two columns each for rank and year
 
 ### Question 2 ---------- 
 
@@ -50,6 +56,18 @@ load("rs_data.RData")
 # Make Rank and Year into integer variables for rs_old before binding them into rs_all
 
 #ANSWER
+# Add Source variable to each dataset
+rs_new <- rs_new %>% mutate(Source = "New")
+rs_old <- rs_old %>% mutate(Source = "Old")
+
+# Convert Rank and Year to integer in rs_old
+rs_old <- rs_old %>%
+  mutate(Rank = as.integer(Rank),
+         Year = as.integer(Year))
+
+# Combine both datasets using bind_rows
+rs_all <- bind_rows(rs_new, rs_old)
+
 
 
 ### Question 3 ----------
@@ -62,6 +80,28 @@ load("rs_data.RData")
 # Use both functions to make all artists/song lowercase and remove any extra spaces
 
 #ANSWER
+# Define a function to clean artist and song names
+clean_text <- function(text) {
+  text %>%
+    str_remove_all("\\bThe\\b") %>% # Remove "The"
+    str_replace_all("&", "and") %>% # Replace &
+    str_remove_all("[[:punct:]]") %>% # Remove punctuation
+    str_to_lower() %>% # Convert to lowercase
+    str_trim() # Remove extra spaces
+}
+
+# Apply cleaning function
+rs_new <- rs_new %>%
+  mutate(Artist = clean_text(Artist),
+         Song = clean_text(Song))
+
+rs_old <- rs_old %>%
+  mutate(Artist = clean_text(Artist), 
+         Song = clean_text(Song))
+
+# Bind
+rs_all <- bind_rows(rs_new, rs_old)
+
 
 
 ### Question 4 ----------
@@ -75,7 +115,25 @@ load("rs_data.RData")
 # in the new rs_joined compared to the original. Use nrow to check (there should be 799 rows)
 
 #ANSWER
+# Split rs_all into two datasets
+rs_new_split <- rs_all %>% 
+  filter(Source == "New") %>% 
+  select(Artist, Song, Rank, Year) %>% 
+  rename(Rank_New = Rank, Year_New = Year)
 
+rs_old_split <- rs_all %>% 
+  filter(Source == "Old") %>% 
+  select(Artist, Song, Rank, Year) %>% 
+  rename(Rank_Old = Rank, Year_Old = Year)
+
+# Check number of rows
+nrow(rs_new_split)
+nrow(rs_old_split)
+
+# Full join
+rs_joined <- full_join(rs_old_split, rs_new_split, by = c("Artist", "Song"), suffix = c("_Old", "_New"))
+nrow(rs_joined)
+# There are 799 rows
 
 ### Question 5 ----------
 
@@ -88,7 +146,11 @@ load("rs_data.RData")
 # You should now be able to see how each song moved up/down in rankings between the two lists
 
 #ANSWER
-
+# Clean rs_joined
+rs_joined <- rs_joined %>% 
+  filter(!is.na(Rank_New) & !is.na(Rank_Old)) %>% # Remove NAs
+  mutate(Rank_Change = Rank_Old - Rank_New) %>% # Create Rank_Change
+  arrange(Rank_Change) # Sort
 
 ### Question 6 ----------
 
@@ -99,9 +161,18 @@ load("rs_data.RData")
 # Which decade improved the most?
 
 #ANSWER
+# Add decade
+rs_joined <- rs_joined %>% 
+  mutate(Decade = paste0(floor(Year_Old / 10) * 10, "s") %>% 
+           as.factor())
 
-
-
+# Group by decade and calculate mean Rank_Change
+decade_summary <- rs_joined %>% 
+  group_by(Decade) %>% 
+  summarise(Mean_Rank_Change = mean(Rank_Change, na.rm = T))
+decade_summary
+# 1990s improved the most
+          
 ### Question 7 ----------
 
 # Use fct_count to see the number of songs within each decade
@@ -110,8 +181,19 @@ load("rs_data.RData")
 # proportion of songs in each of the top three decades (vs. all the rest)
 
 #ANSWER
+library(forcats)
 
+# Count number of songs per decade
+decade_counts <- fct_count(rs_joined$Decade)
+decade_counts
 
+# Lump the decades
+rs_joined <- rs_joined %>% 
+  mutate(Decade_Lumped = fct_lump(Decade, n = 3))
+
+# Count songs in the lumped factor
+decade_lumped_counts <- fct_count(rs_joined$Decade_Lumped, prop = T)
+decade_lumped_counts
 
 ### Question 8 ---------- 
 
@@ -120,7 +202,12 @@ load("rs_data.RData")
 # Use parse_date_time to fix it
 
 #ANSWER
+# Read csv file
+top20 <- read_csv("top_20.csv")
 
+# Fix Release date
+top_20 <- top20 %>% 
+  mutate(Release = parse_date_time(Release, orders = c("Ymd", "mdY", "dmy", "Y-m-d", "m/d/Y", "d/m/Y")))
 
 ### Question 9 --------
 
